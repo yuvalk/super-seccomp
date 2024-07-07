@@ -1,4 +1,5 @@
 #define _GNU_SOURCE
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -11,6 +12,14 @@
 #include <errno.h>
 #include <sys/uio.h>
 #include <sys/ioctl.h>
+#include <stdint.h>
+#include <string.h>
+#include <stddef.h>
+
+// Define SECCOMP_GET_NOTIF_FD if it's not already defined
+#ifndef SECCOMP_GET_NOTIF_FD
+#define SECCOMP_GET_NOTIF_FD 3
+#endif
 
 #define SECCOMP_FILTER_FLAG_NEW_LISTENER (1UL << 3)
 
@@ -20,14 +29,14 @@ static int seccomp(unsigned int operation, unsigned int flags, void *args)
 }
 
 // Function to handle the intercepted syscall
-static int handle_syscall(int notif_fd, struct seccomp_notif *req, struct seccomp_notif_resp *resp)
+static int handle_syscall(struct seccomp_notif *req, struct seccomp_notif_resp *resp)
 {
     struct seccomp_data *data = &req->data;
     
     // Handle write syscall
     if (data->nr == __NR_write) {
         int fd = data->args[0];
-        uint64_t buf_addr = data->args[1];
+        uintptr_t buf_addr = data->args[1];
         size_t count = data->args[2];
 
         // Allocate buffer to read from child's memory
@@ -65,7 +74,7 @@ static int handle_syscall(int notif_fd, struct seccomp_notif *req, struct seccom
     return 0;
 }
 
-int main(int argc, char *argv[])
+int main(void)
 {
     int notif_fd, child_pid;
 
@@ -75,7 +84,7 @@ int main(int argc, char *argv[])
     if (child_pid == 0) {
         // Child process
         struct sock_filter filter[] = {
-            BPF_STMT(BPF_LD | BPF_W | BPF_ABS, (offsetof(struct seccomp_data, nr))),
+            BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, nr)),
             BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_write, 0, 1),
             BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_USER_NOTIF),
             BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
@@ -125,7 +134,7 @@ int main(int argc, char *argv[])
                 break;
             }
 
-            if (handle_syscall(notif_fd, req, resp) == -1) {
+            if (handle_syscall(req, resp) == -1) {
                 fprintf(stderr, "Failed to handle syscall\n");
                 break;
             }
