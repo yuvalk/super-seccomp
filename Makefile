@@ -1,5 +1,5 @@
-CC = gcc
-CFLAGS = -Wall -Wextra -pedantic -std=c11 -D_GNU_SOURCE
+CC = clang
+CFLAGS = -Wall -Wextra -pedantic -std=c17
 LDFLAGS = 
 
 TARGET = seccomp_unotify
